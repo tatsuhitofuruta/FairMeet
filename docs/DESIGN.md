@@ -1,0 +1,239 @@
+# FairMeet 設計書
+
+本書が実装の唯一の真実。実装と本書が食い違う場合は実装を本書に合わせて修正する。
+
+## 1. アーキテクチャ
+
+```
+[ビルド時]
+station_database (json.zip) --> scripts/build-graph.mjs --> public/data/graph.json
+
+[実行時（すべてブラウザ内）]
+graph.json --fetch--> グラフ構築 --> Dijkstra×人数 --> スコアリング --> 上位5駅表示
+```
+
+- Vite + React 18+ + TypeScript の SPA。サーバ・外部APIなし
+- 状態管理は useState のみ。ルーター・状態管理ライブラリは導入しない
+- UIフレームワークは使わず、単一のCSSファイルで素のCSSを書く（モバイルファースト）
+- 計算はメインスレッドで同期実行（後述の規模なら数十msで完了するため Web Worker は使わない）
+
+### ディレクトリ構成
+
+```
+FairMeet/
+├── docs/                  # 本書・要件定義書
+├── scripts/
+│   └── build-graph.mjs    # データパイプライン（Node ESM）
+├── public/data/graph.json # 生成物（gitignore対象）
+├── src/
+│   ├── lib/
+│   │   ├── types.ts       # GraphData等の型定義
+│   │   ├── graph.ts       # graph.jsonロードと隣接リスト構築
+│   │   ├── dijkstra.ts    # 最短路探索
+│   │   ├── scoring.ts     # 候補駅スコアリング
+│   │   └── search.ts      # 駅名オートコンプリート（正規化含む）
+│   ├── components/
+│   │   ├── StationInput.tsx   # オートコンプリート付き入力行
+│   │   ├── MemberList.tsx     # 入力行の追加・削除
+│   │   ├── ModeSelector.tsx   # 探索モード切替
+│   │   ├── ResultCard.tsx     # 候補駅カード
+│   │   └── ResultList.tsx
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── styles.css
+├── tests/                 # Vitestテスト（src/lib対象 + 統合スモーク）
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
+
+## 2. データパイプライン (`scripts/build-graph.mjs`)
+
+### 入力
+
+`https://raw.githubusercontent.com/Seo-4d696b75/station_database/main/out/main/json.zip`
+を取得し `.cache/` に保存（既存ならスキップ）。zip展開は `fflate`（devDependency）を使う。
+
+zip内構造:
+- `json/station.json` … 駅の配列。使用フィールド: `code, name, original_name, name_kana, closed, lat, lng, prefecture, lines`
+- `json/line.json` … 路線の配列。使用フィールド: `code, name, closed, color`
+- `json/line/{code}.json` … 路線詳細。`station_list` が駅の並び順（隣接関係の根拠）
+
+### 処理ルール
+
+1. `closed: true` の駅・路線は除外する
+2. 路線詳細の `station_list` を除外後の駅でフィルタし、隣接ペア（連続する2駅）を乗車エッジとする
+3. ノードは2種類:
+   - ハブノード: 駅ごとに1つ。ID = 駅配列のインデックス（0〜S-1）
+   - スポークノード: (駅, 乗入路線) の組ごとに1つ。ID = S 以降の連番
+4. エッジは3種類（すべて無向）:
+
+| 種別 | 接続 | 重み（分） |
+|------|------|-----------|
+| 乗車 | 同一路線の隣接駅のスポーク間 | 後述の式 |
+| 改札・待ち | ハブ ⇔ 同駅の各スポーク | 2.5（固定） |
+| 徒歩連絡 | 近接する駅のハブ間 | 3 + 15 × d |
+
+ハブ⇔スポーク2.5分により、乗換（スポーク→ハブ→スポーク）は計5分、出発時の初乗り（待ち時間相当）は2.5分として表現される。
+
+### 乗車エッジの重み
+
+```
+d  = haversine距離 (km)
+d' = 1.2 × d                  # 迂回係数: 直線距離→実キロの補正
+在来線:  v = clamp(30 + 10×d', 30, 85)   km/h、停車ロス 0.5分
+新幹線:  v = clamp(60 + 30×d', 60, 260)  km/h、停車ロス 3.0分
+重み = d'/v × 60 + 停車ロス (分)
+```
+
+- 新幹線判定: 路線名に「新幹線」を含む
+- 異常データ対策: d が在来線50km・新幹線150kmを超える隣接ペアはエッジを張らない（路線データの分岐表現による誤接続の防御）
+
+### 徒歩連絡エッジ
+
+異なる駅（station code が異なる）のペアで、以下のいずれかを満たすものにハブ間エッジを張る:
+
+- haversine距離 d ≤ 0.8km（駅名問わず。物理的に歩ける近接駅）
+- `original_name` が同一 かつ d ≤ 1.2km（例: 新宿系の離れた同名駅）
+
+重み = 3 + 15 × d（分）。全ペア走査は O(S²) を避け、緯度経度のグリッドバケット（約0.01度 ≒ 1km格子）で近傍のみ比較する。
+
+### 出力スキーマ (`public/data/graph.json`)
+
+```jsonc
+{
+  "version": 1,
+  "generatedAt": "2026-06-11T00:00:00Z",
+  "source": "Seo-4d696b75/station_database (CC BY-SA 4.0)",
+  "nodeCount": 24000,            // ハブS個 + スポーク全数
+  "stations": [                  // index = ハブノードID
+    {
+      "c": 1110101,              // station code（参照用）
+      "n": "函館",               // name（表示・検索用。DB内で一意）
+      "o": "函館",               // original_name（同名判定・表示用）
+      "k": "はこだて",           // name_kana（検索用）
+      "p": 1,                    // prefecture (1-47)
+      "lat": 41.773709,
+      "lng": 140.726413,
+      "l": [0, 3]                // 乗入路線の lines 配列インデックス
+    }
+  ],
+  "lines": [
+    { "n": "函館本線", "c": "#FF6600" }   // n=名称, c=色（nullあり）
+  ],
+  "edges": [
+    [0, 9372, 25],               // [nodeA, nodeB, 重み(0.1分単位の整数)]
+  ]
+}
+```
+
+- 重みは0.1分単位の整数に丸めてサイズ削減
+- `stations` から voronoi・住所・郵便番号など不要フィールドは落とす
+- 生成後にコンソールへ統計を出す: 駅数 / 路線数 / ノード数 / エッジ種別ごとの本数 / ファイルサイズ
+
+### コマンド
+
+`npm run build:data` で実行。`--offline` フラグで `.cache/json.zip` のみ使用（再ダウンロードなし）。
+
+## 3. 探索 (`src/lib/dijkstra.ts`)
+
+- graph.json ロード後、隣接リスト（`Int32Array` ベースのCSR形式 or 単純な配列の配列）を一度だけ構築しメモリに保持
+- 二分ヒープによる標準 Dijkstra。引数: 始点ハブノードID、返り値: 全ノードへの距離（0.1分単位）`Float64Array` または `Int32Array`（未到達は `Infinity` 相当の番兵値）
+- 始点はメンバーの最寄駅のハブノード。メンバーごとに1回実行（最大10回）
+- 候補駅 c の所要時間 = ハブノード c での距離値。同一駅が出発駅なら0分
+
+規模感: ノード約2.4万・無向エッジ約3〜4万 → 1回のDijkstraは10ms前後。10人でも問題なし。
+
+## 4. スコアリング (`src/lib/scoring.ts`)
+
+メンバー i の候補駅 c までの所要時間を t_i（分）とする。
+
+1. いずれかの t_i が未到達の候補駅は除外
+2. モード別スコア（小さいほど良い）:
+
+| モード | スコア式 | 意図 |
+|--------|---------|------|
+| fair（既定） | `max(t) + 0.1 × mean(t)` | 一番遠い人を最小化。同点は平均で決着 |
+| balanced | `mean(t) + 0.5 × (max(t) − min(t))` | 平均と格差の折衷 |
+| total | `mean(t)` | 全員の合計時間最小 |
+
+3. スコア昇順に走査し、採択済み候補と「`original_name` が同じ」または「距離0.6km未満」のものはスキップ（実質同じ場所の重複排除）
+4. 上位5件を返す。各候補に付随する情報: 駅情報、各メンバーの所要時間（分、四捨五入で整数表示用の値も）、max、mean
+5. 候補が0件（鉄道網が分断されている入力）の場合、どのメンバーが他と分断されているかを返す: メンバー1の距離配列で各メンバーの出発駅ハブを引き、未到達のメンバーを列挙する
+
+出発駅自身も候補から除外しない（誰かの最寄駅が最適解になるのは正当な結果）。
+
+## 5. オートコンプリート (`src/lib/search.ts`)
+
+- 正規化関数 `normalize(s)`: NFKC正規化 → 小文字化 → カタカナをひらがなへ変換（U+30A1〜30F6 を −0x60）
+- マッチ: `normalize(name)` / `normalize(original_name)` / `kana` のいずれかが正規化済みクエリで**前方一致**
+- 並び順: 完全一致 → 名前が短い順。最大8件
+- 表示: 駅名・都道府県名（同名駅の区別用）・代表路線名1つ
+- 都道府県コード→名称の47要素定数配列を `search.ts` に持つ
+- 駅の確定は候補リストからの選択で station index を保持する。未確定の自由入力のまま検索した場合、正規化名が一意に一致すれば自動確定、それ以外は当該行をエラー表示
+
+## 6. UI仕様 (`App.tsx` 以下)
+
+### レイアウト（1カラム、max-width 640px 中央寄せ）
+
+1. ヘッダ: アプリ名「FairMeet」とひとこと説明「みんなの最寄駅から、ちょうどいい集合駅を見つける」
+2. メンバー入力リスト:
+   - 初期2行。「+ メンバーを追加」で最大10行、各行に削除ボタン（2行以下では削除不可）
+   - 各行はオートコンプリート付きテキスト入力（`StationInput`）。候補はキーボード（↑↓Enter）とクリックで選択可能
+3. モード選択: セグメント風ラジオ3択「公平重視 / バランス / 合計重視」（既定: 公平重視）
+4. 検索ボタン「集合駅をさがす」: 確定済み駅が2件未満なら disabled
+5. 結果リスト: 順位付きカード×最大5
+   - 駅名（大きく）・都道府県・乗入路線チップ（路線色を背景に、最大5路線+「他n路線」）
+   - メンバーごとの行: 「{出発駅名}から ○分」+ 所要時間に比例した横棒（カード内最大値=100%）
+   - フッタ行: 「最大 ○分 / 平均 ○分」、Googleマップリンク（`https://www.google.com/maps/search/?api=1&query={lat},{lng}`、`target="_blank" rel="noopener noreferrer"`）
+6. 到達不能時: 「⚠ {駅名} は他のメンバーと鉄道がつながっていないため候補を計算できません」
+7. フッタ:
+   - 「所要時間はダイヤを考慮しない概算です（駅間距離からの推定）」
+   - 出典表示: 「駅・路線データ: station_database (CC BY-SA 4.0)」をリポジトリへのリンク付きで
+
+### 挙動
+
+- graph.json は初回マウント時に fetch 開始（`import.meta.env.BASE_URL + 'data/graph.json'`）。ロード中に検索したらロード完了を待って実行。fetch失敗時はエラーバナーと再試行ボタン
+- 検索結果はモード変更時に再計算する（Dijkstra結果はメンバー構成が同じ間キャッシュし、スコアリングのみやり直す）
+- 入力変更後は結果を古い状態のまま残さない（結果クリア or 「条件が変わりました」表示のどちらかで良い）
+
+## 7. テスト（Vitest）
+
+`tests/` 配下。`src/lib` の全モジュールを対象に:
+
+| 対象 | ケース |
+|------|--------|
+| dijkstra | 手組みの小グラフで最短距離・未到達の検証 |
+| scoring | fairモードでmax最小が勝つこと / 重複排除 / 未到達除外 / 分断メンバー検出 |
+| search | ひらがな・カタカナ・漢字の前方一致、完全一致優先、8件上限 |
+| build-graph | エッジ生成ロジックを純関数に切り出し、フィクスチャ（数駅×2路線のミニデータ）で乗車・徒歩・ハブエッジの本数と重みを検証 |
+| 統合スモーク | `public/data/graph.json` が存在する場合のみ実行（無ければskip）: 渋谷・大宮・横浜入力で候補5件が返り、全候補の最大所要時間が120分未満であること。那覇空港・東京で分断が検出されること |
+
+build-graph のロジックは `scripts/build-graph.mjs` 内で `buildGraph(stations, lines, lineDetails)` のような純関数としてexportし、ダウンロード・I/Oと分離してテスト可能にする。
+
+## 8. package.json スクリプト
+
+| コマンド | 内容 |
+|---------|------|
+| `dev` | vite |
+| `build` | tsc -b && vite build |
+| `preview` | vite preview |
+| `test` | vitest run |
+| `build:data` | node scripts/build-graph.mjs |
+
+依存は最小限: react, react-dom / devDeps: vite, @vitejs/plugin-react, typescript, vitest, fflate, @types/react, @types/react-dom。これ以外を追加しない。
+
+## 9. 受け入れ基準
+
+1. `npm run build:data` が成功し、graph.json が生成される（gzip後2MB以下）
+2. `npm run test` 全件パス（graph.json生成後は統合スモーク含む）
+3. `npm run build` が型エラー・警告なしで完了
+4. `npm run dev` で起動し、渋谷・大宮・横浜の入力で都心ターミナル駅相当が上位に出る
+5. 出典・概算注記がUIに表示されている
+
+## 10. 既知の制限（実装しないことの明文化）
+
+- 路線の分岐（支線）は station_list の並び順から正確に復元できないため、距離上限ガードで誤接続を防ぐに留める
+- 運行本数・終電・特急料金は考慮しない
+- 徒歩連絡は直線距離ベースの推定であり、実際の連絡通路の有無は確認しない
