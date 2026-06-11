@@ -71,7 +71,7 @@ function edgeKey(a, b) {
 }
 
 function addEdge(edges, seen, stats, type, a, b, weight) {
-  if (a === b || weight == null || weight <= 0) {
+  if (a === b || !Number.isFinite(weight) || weight <= 0) {
     return;
   }
   const key = edgeKey(a, b);
@@ -95,7 +95,12 @@ export function buildGraph(rawStations, rawLines, lineDetails) {
     c: sanitizeLineColor(line.color),
   }));
 
-  const activeStations = rawStations.filter((station) => !station.closed);
+  const activeStations = rawStations.filter((station) => {
+    if (station.closed) {
+      return false;
+    }
+    return Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng));
+  });
   const stationCodeToIndex = new Map();
   const stations = activeStations.map((station, index) => {
     stationCodeToIndex.set(Number(station.code), index);

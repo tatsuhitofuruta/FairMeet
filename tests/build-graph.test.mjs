@@ -97,4 +97,32 @@ describe('buildGraph', () => {
     expect(closeWeight).toBeGreaterThan(5);
     expect(abnormalWeight).toBeNull();
   });
+
+  it('excludes stations with non-finite coordinates during import', () => {
+    const { graph } = buildGraph(
+      [
+        { ...rawStations[0], code: 101 },
+        { ...rawStations[1], code: 102, lat: undefined },
+        { ...rawStations[2], code: 103, lng: 'not-a-number' },
+      ],
+      [rawLines[0]],
+      { 10: { station_list: [101, 102, 103] } },
+    );
+
+    expect(graph.stations.map((station) => station.c)).toEqual([101]);
+  });
+
+  it('does not generate ride edges through stations with missing coordinates', () => {
+    const { graph, stats } = buildGraph(
+      [
+        { ...rawStations[0], code: 201 },
+        { ...rawStations[1], code: 202, lat: undefined },
+      ],
+      [rawLines[0]],
+      { 10: { station_list: [201, 202] } },
+    );
+
+    expect(stats.rideEdges).toBe(0);
+    expect(graph.edges.every(([a, b, weight]) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(weight))).toBe(true);
+  });
 });

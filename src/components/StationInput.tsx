@@ -26,6 +26,8 @@ export function StationInput({
   const deferredValue = useDeferredValue(value);
   const suggestions = useMemo(() => (graph ? searchStations(graph, deferredValue) : []), [deferredValue, graph]);
   const listId = `${label}-suggestions`;
+  const hasVisibleSuggestions = isOpen && suggestions.length > 0;
+  const activeDescendantId = hasVisibleSuggestions ? `${listId}-opt-${activeIndex}` : undefined;
 
   const selectSuggestion = (index: number) => {
     const suggestion = suggestions[index];
@@ -43,12 +45,15 @@ export function StationInput({
         <span>{label}</span>
         <input
           type="text"
+          role="combobox"
           value={value}
           placeholder="例: 渋谷"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${label}-error` : undefined}
+          aria-expanded={hasVisibleSuggestions}
           aria-autocomplete="list"
           aria-controls={listId}
+          aria-activedescendant={activeDescendantId}
           onFocus={() => setIsOpen(true)}
           onChange={(event) => {
             onChange(event.target.value);
@@ -77,24 +82,25 @@ export function StationInput({
 
       {stationIndex !== null && !error ? <span className="input-status">選択済み</span> : null}
 
-      {isOpen && suggestions.length > 0 ? (
+      {hasVisibleSuggestions ? (
         <ul className="suggestions" id={listId} role="listbox">
           {suggestions.map((suggestion, index) => (
-            <li key={suggestion.stationIndex}>
-              <button
-                type="button"
-                className={index === activeIndex ? 'active' : ''}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => selectSuggestion(index)}
-                role="option"
-                aria-selected={index === activeIndex}
-              >
-                <strong>{suggestion.station.n}</strong>
-                <span>
-                  {suggestion.prefectureName}
-                  {suggestion.representativeLineName ? `・${suggestion.representativeLineName}` : ''}
-                </span>
-              </button>
+            <li
+              key={suggestion.stationIndex}
+              id={`${listId}-opt-${index}`}
+              className={index === activeIndex ? 'active' : ''}
+              role="option"
+              aria-selected={index === activeIndex}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                selectSuggestion(index);
+              }}
+            >
+              <strong>{suggestion.station.n}</strong>
+              <span>
+                {suggestion.prefectureName}
+                {suggestion.representativeLineName ? `・${suggestion.representativeLineName}` : ''}
+              </span>
             </li>
           ))}
         </ul>
