@@ -12,6 +12,41 @@ const initialMembers: MemberInputState[] = [
   { id: 2, text: '', stationIndex: null, error: null },
 ];
 
+export interface MemberValidationResult {
+  validatedMembers: MemberInputState[];
+  stationIndexes: number[];
+  hasErrors: boolean;
+  canSearch: boolean;
+}
+
+export function validateMembersForSearch(members: MemberInputState[], graph: GraphData): MemberValidationResult {
+  const validatedMembers = members.map((member) => {
+    if (member.stationIndex !== null) {
+      return { ...member, error: null };
+    }
+    if (!member.text.trim()) {
+      return { ...member, error: null };
+    }
+
+    const resolved = resolveUniqueStation(graph, member.text);
+    if (resolved) {
+      return { ...member, text: resolved.station.n, stationIndex: resolved.stationIndex, error: null };
+    }
+    return { ...member, error: '候補から駅を選択してください' };
+  });
+  const stationIndexes = validatedMembers
+    .map((member) => member.stationIndex)
+    .filter((stationIndex): stationIndex is number => stationIndex !== null);
+  const hasErrors = validatedMembers.some((member) => member.error !== null);
+
+  return {
+    validatedMembers,
+    stationIndexes,
+    hasErrors,
+    canSearch: stationIndexes.length >= 2 && !hasErrors,
+  };
+}
+
 export function App() {
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [adjacency, setAdjacency] = useState<AdjacencyList | null>(null);
@@ -103,39 +138,29 @@ export function App() {
           return;
         }
 
-        const validatedMembers = members.map((member) => {
-          if (member.stationIndex !== null) {
-            return { ...member, error: null };
-          }
-          const resolved = resolveUniqueStation(currentGraph, member.text);
-          if (resolved) {
-            return { ...member, text: resolved.station.n, stationIndex: resolved.stationIndex, error: null };
-          }
-          return { ...member, error: member.text.trim() ? '候補から駅を選択してください' : '駅を入力してください' };
-        });
+        const validation = validateMembersForSearch(members, currentGraph);
 
-        const validStationIndexes = validatedMembers
-          .map((member) => member.stationIndex)
-          .filter((stationIndex): stationIndex is number => stationIndex !== null);
-
-        setMembers(validatedMembers);
-        if (validStationIndexes.length < 2 || validatedMembers.some((member) => member.error)) {
+        setMembers(validation.validatedMembers);
+        if (!validation.canSearch) {
           setResults([]);
           setDisconnectedMemberIndexes([]);
-          setSearchError('2人以上の駅を確定してください');
+          setSearchError(validation.hasErrors ? '候補から駅を選択してください' : '2人以上の駅を確定してください');
           return;
         }
 
         const result = findMeetingStations(
           currentGraph,
           currentAdjacency,
-          validStationIndexes,
+          validation.stationIndexes,
           nextMode,
           distanceCacheRef.current,
         );
         setResults(result.results);
         setDisconnectedMemberIndexes(result.disconnectedMemberIndexes);
-        lastSearchRef.current = { key: validStationIndexes.join(','), memberStationIndexes: validStationIndexes };
+        lastSearchRef.current = {
+          key: validation.stationIndexes.join(','),
+          memberStationIndexes: validation.stationIndexes,
+        };
       } finally {
         setIsSearching(false);
       }
