@@ -51,7 +51,7 @@ describe('generated graph integration smoke', () => {
     const result = findMeetingStations(graph, adjacency, members, 'fair');
 
     expect(result.results).toHaveLength(0);
-    expect(result.disconnectedMemberIndexes).toEqual([1]);
+    expect(result.disconnectedMemberIndexes).toEqual([0]);
   });
 
   it.skipIf(!existsSync(graphPath))('detects disconnected members for Tokyo and Naha Airport', () => {

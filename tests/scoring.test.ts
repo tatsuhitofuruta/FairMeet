@@ -128,7 +128,7 @@ describe('detectDisconnectedMembers', () => {
     expect(disconnected).toEqual([3, 4]);
   });
 
-  it('keeps the group containing member 1 when groups are tied', () => {
+  it('uses the smallest member index when member count and reachable node count are tied', () => {
     const disconnected = detectDisconnectedMembers(
       [0, 1, 2, 3],
       [
@@ -140,5 +140,19 @@ describe('detectDisconnectedMembers', () => {
     );
 
     expect(disconnected).toEqual([2, 3]);
+  });
+
+  it('uses the group with more reachable nodes when member counts are tied', () => {
+    const disconnected = detectDisconnectedMembers(
+      [0, 1, 2, 3],
+      [
+        Float64Array.from([0, 100, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([100, 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 0, 100, 120, 140]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 100, 0, 120, 140]),
+      ],
+    );
+
+    expect(disconnected).toEqual([0, 1]);
   });
 });

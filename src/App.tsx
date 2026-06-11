@@ -169,10 +169,10 @@ export function App() {
       .map((member) => member.stationIndex)
       .filter((stationIndex): stationIndex is number => stationIndex !== null);
     return disconnectedMemberIndexes
-      .map((memberIndex) => selected[memberIndex])
-      .filter((stationIndex): stationIndex is number => stationIndex !== undefined)
-      .map((stationIndex, index) => ({
-        memberIndex: disconnectedMemberIndexes[index],
+      .map((memberIndex) => ({ memberIndex, stationIndex: selected[memberIndex] }))
+      .filter((warning): warning is { memberIndex: number; stationIndex: number } => warning.stationIndex !== undefined)
+      .map(({ memberIndex, stationIndex }) => ({
+        memberIndex,
         stationName: graph.stations[stationIndex].n,
       }));
   }, [disconnectedMemberIndexes, graph, members]);

@@ -145,11 +145,41 @@ export function detectDisconnectedMembers(
     groups.push(group);
   }
 
+  const reachableNodeCount = (memberIndex: number) => {
+    const distances = distancesByMember[memberIndex];
+    if (!distances) {
+      return 0;
+    }
+    let count = 0;
+    for (const distance of distances) {
+      if (Number.isFinite(distance)) {
+        count += 1;
+      }
+    }
+    return count;
+  };
+
+  const groupReachableNodeCount = (group: number[]) => reachableNodeCount(group[0]);
+  const groupMinMemberIndex = (group: number[]) => Math.min(...group);
+
   const majority = groups.reduce((best, group) => {
     if (group.length > best.length) {
       return group;
     }
-    if (group.length === best.length && group.includes(0)) {
+    if (group.length < best.length) {
+      return best;
+    }
+
+    const groupReachable = groupReachableNodeCount(group);
+    const bestReachable = groupReachableNodeCount(best);
+    if (groupReachable > bestReachable) {
+      return group;
+    }
+    if (groupReachable < bestReachable) {
+      return best;
+    }
+
+    if (groupMinMemberIndex(group) < groupMinMemberIndex(best)) {
       return group;
     }
     return best;
