@@ -12,7 +12,7 @@ function graphFixture(): GraphData {
     edges: [],
     stations: [
       { c: 1, n: 'A', o: 'A', k: 'えー', p: 13, lat: 35.68, lng: 139.76, l: [0] },
-      { c: 2, n: 'B', o: 'B', k: 'びー', p: 13, lat: 35.9, lng: 139.76, l: [0] },
+      { c: 1130205, n: 'B', o: 'B', k: 'びー', p: 13, lat: 35.9, lng: 139.76, l: [0] },
       { c: 3, n: 'C', o: 'C', k: 'しー', p: 13, lat: 36.1, lng: 139.76, l: [0] },
       { c: 4, n: 'C別駅', o: 'C', k: 'しーべつ', p: 13, lat: 36.1005, lng: 139.7605, l: [0] },
       { c: 5, n: 'D', o: 'D', k: 'でぃー', p: 13, lat: 36.5, lng: 139.76, l: [0] },
@@ -36,6 +36,39 @@ describe('scoreCandidates', () => {
 
     expect(results[0].station.n).toBe('B');
     expect(results[0].max).toBe(20);
+  });
+
+  it('uses area tier as a tie-breaker for candidates inside the score window', () => {
+    const graph = graphFixture();
+    const results = scoreCandidates(
+      graph,
+      [0, 2],
+      [
+        Float64Array.from([100, 120, 500, 500, 200, 500]),
+        Float64Array.from([100, 120, 500, 500, 200, 500]),
+      ],
+      'total',
+    );
+
+    expect(results[0].station.n).toBe('B');
+    expect(results[0].areaTier.tier).toBe(4);
+    expect(results[0].score).toBe(12);
+  });
+
+  it('does not let area tier override candidates outside the score window', () => {
+    const graph = graphFixture();
+    const results = scoreCandidates(
+      graph,
+      [0, 2],
+      [
+        Float64Array.from([100, 140, 500, 500, 200, 500]),
+        Float64Array.from([100, 140, 500, 500, 200, 500]),
+      ],
+      'total',
+    );
+
+    expect(results[0].station.n).toBe('A');
+    expect(results[1].station.n).toBe('B');
   });
 
   it('deduplicates stations with the same original_name or near-identical coordinates', () => {

@@ -1,5 +1,6 @@
 import { dijkstra } from './dijkstra';
-import type { AdjacencyList, GraphData, SearchMode, Station } from './types';
+import { getStationAreaTier, STATION_AREA_TIER_SCORE_WINDOW_MINUTES } from './stationAreaTiers';
+import type { AdjacencyList, GraphData, SearchMode, Station, StationAreaTierInfo } from './types';
 
 export interface MemberTravelTime {
   stationIndex: number;
@@ -10,6 +11,7 @@ export interface MemberTravelTime {
 export interface MeetingCandidate {
   stationIndex: number;
   station: Station;
+  areaTier: StationAreaTierInfo;
   times: MemberTravelTime[];
   max: number;
   mean: number;
@@ -48,6 +50,41 @@ function calculateScore(times: number[], mode: SearchMode): number {
   return max + 0.1 * mean;
 }
 
+function sortByScoreThenStation(a: MeetingCandidate, b: MeetingCandidate): number {
+  if (a.score !== b.score) {
+    return a.score - b.score;
+  }
+  return a.stationIndex - b.stationIndex;
+}
+
+function applyAreaTierTieBreaks(candidates: MeetingCandidate[]): MeetingCandidate[] {
+  const sortedByScore = [...candidates].sort(sortByScoreThenStation);
+  const ranked: MeetingCandidate[] = [];
+
+  for (let start = 0; start < sortedByScore.length;) {
+    const baseScore = sortedByScore[start].score;
+    let end = start + 1;
+    while (
+      end < sortedByScore.length &&
+      sortedByScore[end].score - baseScore <= STATION_AREA_TIER_SCORE_WINDOW_MINUTES
+    ) {
+      end += 1;
+    }
+
+    ranked.push(
+      ...sortedByScore.slice(start, end).sort((a, b) => {
+        if (a.areaTier.tier !== b.areaTier.tier) {
+          return b.areaTier.tier - a.areaTier.tier;
+        }
+        return sortByScoreThenStation(a, b);
+      }),
+    );
+    start = end;
+  }
+
+  return ranked;
+}
+
 function isDuplicatePlace(graph: GraphData, aIndex: number, bIndex: number): boolean {
   const a = graph.stations[aIndex];
   const b = graph.stations[bIndex];
@@ -76,6 +113,7 @@ export function scoreCandidates(
     ranked.push({
       stationIndex,
       station: graph.stations[stationIndex],
+      areaTier: getStationAreaTier(graph.stations[stationIndex]),
       times: minutes.map((time, index) => ({
         stationIndex: memberStationIndexes[index],
         minutes: time,
@@ -87,15 +125,10 @@ export function scoreCandidates(
     });
   }
 
-  ranked.sort((a, b) => {
-    if (a.score !== b.score) {
-      return a.score - b.score;
-    }
-    return a.stationIndex - b.stationIndex;
-  });
+  const areaAwareRanked = applyAreaTierTieBreaks(ranked);
 
   const selected: MeetingCandidate[] = [];
-  for (const candidate of ranked) {
+  for (const candidate of areaAwareRanked) {
     if (selected.some((picked) => isDuplicatePlace(graph, picked.stationIndex, candidate.stationIndex))) {
       continue;
     }

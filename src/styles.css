@@ -329,6 +329,25 @@ a {
   margin: 3px 0 0;
 }
 
+.station-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.area-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #fff4d6;
+  color: #775100;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
 .line-chips {
   display: flex;
   flex-wrap: wrap;
@@ -392,6 +411,32 @@ a {
   font-weight: 800;
 }
 
+.map-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.map-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid #d5deea;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f5cc8;
+  font-size: 0.84rem;
+  text-decoration: none;
+}
+
+.map-links a:focus-visible,
+.map-links a:hover {
+  border-color: #2f6fe4;
+  background: #eef4ff;
+}
+
 .app-footer {
   margin-top: 26px;
   font-size: 0.86rem;
@@ -424,5 +469,9 @@ a {
   .result-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .map-links {
+    justify-content: flex-start;
   }
 }

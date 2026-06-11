@@ -34,3 +34,17 @@ export interface AdjacentEdge {
 export type AdjacencyList = AdjacentEdge[][];
 
 export type SearchMode = 'fair' | 'balanced' | 'total';
+
+export type StationAreaTier = 0 | 1 | 2 | 3 | 4;
+
+export interface StationAreaTierDefinition {
+  tier: StationAreaTier;
+  label: string;
+  summary: string;
+}
+
+export interface StationAreaTierInfo extends StationAreaTierDefinition {
+  source: 'passenger-count' | 'manual-seed' | 'manual-override' | 'unlisted-default';
+  reason?: string;
+  updatedAt?: string;
+}

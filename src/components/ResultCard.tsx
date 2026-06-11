@@ -1,3 +1,4 @@
+import { mapSearchCategories, stationCategoryMapUrl, stationMapUrl } from '../lib/maps';
 import { PREFECTURES } from '../lib/search';
 import type { MeetingCandidate } from '../lib/scoring';
 import type { GraphData } from '../lib/types';
@@ -14,14 +15,22 @@ export function ResultCard({ graph, result, rank }: ResultCardProps) {
   const visibleLines = lines.slice(0, 5);
   const remainingLineCount = Math.max(0, lines.length - visibleLines.length);
   const maxTime = Math.max(1, ...result.times.map((time) => time.minutes));
-  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${station.lat},${station.lng}`;
+  const prefectureName = PREFECTURES[station.p] ?? '';
+  const mapUrl = stationMapUrl(station);
 
   return (
     <article className="result-card">
       <div className="result-heading">
         <span className="rank">{rank}</span>
         <div>
-          <h2>{station.n}</h2>
+          <div className="station-title-row">
+            <h2>{station.n}</h2>
+            {result.areaTier.tier > 0 ? (
+              <span className="area-tier-badge" title={result.areaTier.summary}>
+                栄え度 {result.areaTier.tier}
+              </span>
+            ) : null}
+          </div>
           <p>{PREFECTURES[station.p]}</p>
         </div>
       </div>
@@ -61,9 +70,21 @@ export function ResultCard({ graph, result, rank }: ResultCardProps) {
         <span>
           最大 {Math.round(result.max)}分 / 平均 {Math.round(result.mean)}分
         </span>
-        <a href={mapUrl} target="_blank" rel="noopener noreferrer">
-          Googleマップ
-        </a>
+        <div className="map-links" aria-label={`${station.n}駅周辺のGoogleマップ検索`}>
+          <a href={mapUrl} target="_blank" rel="noopener noreferrer">
+            地図
+          </a>
+          {mapSearchCategories.map((category) => (
+            <a
+              href={stationCategoryMapUrl(station, prefectureName, category)}
+              target="_blank"
+              rel="noopener noreferrer"
+              key={category}
+            >
+              {category}
+            </a>
+          ))}
+        </div>
       </footer>
     </article>
   );
