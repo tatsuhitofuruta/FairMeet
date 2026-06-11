@@ -51,7 +51,8 @@ function calculateScore(times: number[], mode: SearchMode): number {
 function isDuplicatePlace(graph: GraphData, aIndex: number, bIndex: number): boolean {
   const a = graph.stations[aIndex];
   const b = graph.stations[bIndex];
-  return a.o === b.o || haversineKm(a, b) < 0.6;
+  const distanceKm = haversineKm(a, b);
+  return distanceKm < 0.6 || (a.o === b.o && distanceKm <= 1.2);
 }
 
 export function scoreCandidates(
@@ -109,12 +110,55 @@ export function scoreCandidates(
 
 export function detectDisconnectedMembers(
   memberStationIndexes: number[],
-  distancesFromFirst: Float64Array,
+  distancesByMember: Float64Array[],
 ): number[] {
+  const visited = new Set<number>();
+  const groups: number[][] = [];
+
+  for (let memberIndex = 0; memberIndex < memberStationIndexes.length; memberIndex += 1) {
+    if (visited.has(memberIndex)) {
+      continue;
+    }
+
+    const group: number[] = [];
+    const queue = [memberIndex];
+    visited.add(memberIndex);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined) {
+        continue;
+      }
+      group.push(current);
+
+      for (let other = 0; other < memberStationIndexes.length; other += 1) {
+        if (visited.has(other)) {
+          continue;
+        }
+        if (Number.isFinite(distancesByMember[current]?.[memberStationIndexes[other]])) {
+          visited.add(other);
+          queue.push(other);
+        }
+      }
+    }
+
+    groups.push(group);
+  }
+
+  const majority = groups.reduce((best, group) => {
+    if (group.length > best.length) {
+      return group;
+    }
+    if (group.length === best.length && group.includes(0)) {
+      return group;
+    }
+    return best;
+  }, groups[0] ?? []);
+  const majoritySet = new Set(majority);
+
   return memberStationIndexes
-    .map((stationIndex, memberIndex) => ({ stationIndex, memberIndex }))
-    .filter(({ memberIndex, stationIndex }) => memberIndex > 0 && !Number.isFinite(distancesFromFirst[stationIndex]))
-    .map(({ memberIndex }) => memberIndex);
+    .map((_, memberIndex) => memberIndex)
+    .filter((memberIndex) => !majoritySet.has(memberIndex));
 }
 
 export function findMeetingStations(
@@ -138,6 +182,6 @@ export function findMeetingStations(
   return {
     results,
     disconnectedMemberIndexes:
-      results.length === 0 ? detectDisconnectedMembers(memberStationIndexes, distancesByMember[0]) : [],
+      results.length === 0 ? detectDisconnectedMembers(memberStationIndexes, distancesByMember) : [],
   };
 }

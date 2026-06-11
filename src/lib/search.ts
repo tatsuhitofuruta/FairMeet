@@ -58,6 +58,16 @@ export interface StationSearchResult {
   representativeLineName: string;
 }
 
+interface SearchIndexEntry {
+  stationIndex: number;
+  station: Station;
+  normalizedName: string;
+  normalizedOriginalName: string;
+  normalizedKana: string;
+}
+
+const searchIndexCache = new WeakMap<GraphData, SearchIndexEntry[]>();
+
 export function normalize(value: string): string {
   return value
     .normalize('NFKC')
@@ -66,11 +76,36 @@ export function normalize(value: string): string {
     .trim();
 }
 
-function startsWithQuery(station: Station, query: string): boolean {
+export function getSearchIndex(graph: GraphData): SearchIndexEntry[] {
+  const cached = searchIndexCache.get(graph);
+  if (cached) {
+    return cached;
+  }
+
+  const index = graph.stations.map((station, stationIndex) => ({
+    station,
+    stationIndex,
+    normalizedName: normalize(station.n),
+    normalizedOriginalName: normalize(station.o),
+    normalizedKana: normalize(station.k),
+  }));
+  searchIndexCache.set(graph, index);
+  return index;
+}
+
+function startsWithQuery(entry: SearchIndexEntry, query: string): boolean {
   return (
-    normalize(station.n).startsWith(query) ||
-    normalize(station.o).startsWith(query) ||
-    normalize(station.k).startsWith(query)
+    entry.normalizedName.startsWith(query) ||
+    entry.normalizedOriginalName.startsWith(query) ||
+    entry.normalizedKana.startsWith(query)
+  );
+}
+
+function isExactMatch(entry: SearchIndexEntry, query: string): boolean {
+  return (
+    entry.normalizedName === query ||
+    entry.normalizedOriginalName === query ||
+    entry.normalizedKana === query
   );
 }
 
@@ -80,14 +115,12 @@ export function searchStations(graph: GraphData, input: string, limit = 8): Stat
     return [];
   }
 
-  return graph.stations
-    .map((station, stationIndex) => ({ station, stationIndex }))
-    .filter(({ station }) => startsWithQuery(station, query))
+  return getSearchIndex(graph)
+    .filter((entry) => startsWithQuery(entry, query))
+    .map((entry) => ({ ...entry, exact: isExactMatch(entry, query) }))
     .sort((a, b) => {
-      const aExact = normalize(a.station.n) === query || normalize(a.station.o) === query || normalize(a.station.k) === query;
-      const bExact = normalize(b.station.n) === query || normalize(b.station.o) === query || normalize(b.station.k) === query;
-      if (aExact !== bExact) {
-        return aExact ? -1 : 1;
+      if (a.exact !== b.exact) {
+        return a.exact ? -1 : 1;
       }
       if (a.station.n.length !== b.station.n.length) {
         return a.station.n.length - b.station.n.length;
@@ -109,9 +142,7 @@ export function resolveUniqueStation(graph: GraphData, input: string): StationSe
     return null;
   }
 
-  const matches = graph.stations
-    .map((station, stationIndex) => ({ station, stationIndex }))
-    .filter(({ station }) => normalize(station.n) === query || normalize(station.o) === query || normalize(station.k) === query);
+  const matches = getSearchIndex(graph).filter((entry) => isExactMatch(entry, query));
 
   if (matches.length !== 1) {
     return null;

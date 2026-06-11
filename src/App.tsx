@@ -25,24 +25,51 @@ export function App() {
   const [isSearching, setIsSearching] = useState(false);
   const distanceCacheRef = useRef(new Map<number, Float64Array>());
   const lastSearchRef = useRef<{ key: string; memberStationIndexes: number[] } | null>(null);
+  const graphLoadPromiseRef = useRef<Promise<{ graph: GraphData; adjacency: AdjacencyList }> | null>(null);
 
-  const fetchGraph = useCallback(async () => {
-    setIsLoadingGraph(true);
-    setLoadError(null);
-    try {
-      const loadedGraph = await loadGraphData();
-      setGraph(loadedGraph);
-      setAdjacency(buildAdjacencyList(loadedGraph));
-      distanceCacheRef.current.clear();
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'graph.json の読み込みに失敗しました');
-    } finally {
-      setIsLoadingGraph(false);
-    }
-  }, []);
+  const fetchGraph = useCallback(
+    async (forceReload = false) => {
+      if (!forceReload && graph && adjacency) {
+        return { graph, adjacency };
+      }
+      if (!forceReload && graphLoadPromiseRef.current) {
+        return graphLoadPromiseRef.current;
+      }
+
+      setIsLoadingGraph(true);
+      setLoadError(null);
+      graphLoadPromiseRef.current = loadGraphData()
+        .then((loadedGraph) => {
+          const loadedAdjacency = buildAdjacencyList(loadedGraph);
+          setGraph(loadedGraph);
+          setAdjacency(loadedAdjacency);
+          distanceCacheRef.current.clear();
+          return { graph: loadedGraph, adjacency: loadedAdjacency };
+        })
+        .catch((error) => {
+          setLoadError(error instanceof Error ? error.message : 'graph.json の読み込みに失敗しました');
+          throw error;
+        })
+        .finally(() => {
+          graphLoadPromiseRef.current = null;
+          setIsLoadingGraph(false);
+        });
+
+      return graphLoadPromiseRef.current;
+    },
+    [adjacency, graph],
+  );
+
+  const retryFetchGraph = useCallback(() => {
+    void fetchGraph(true).catch(() => {
+      // エラー表示は fetchGraph 内で更新する。
+    });
+  }, [fetchGraph]);
 
   useEffect(() => {
-    void fetchGraph();
+    void fetchGraph().catch(() => {
+      // エラー表示は fetchGraph 内で更新する。
+    });
   }, [fetchGraph]);
 
   const clearCurrentResults = useCallback(() => {
@@ -55,30 +82,22 @@ export function App() {
   const canAttemptSearch = members.filter((member) => member.stationIndex !== null || member.text.trim()).length >= 2;
 
   const runSearch = useCallback(
-    async (nextMode: SearchMode = mode, keepValidatedMembers = false) => {
+    async (nextMode: SearchMode = mode) => {
       setIsSearching(true);
       setSearchError(null);
 
       try {
-        let currentGraph = graph;
-        let currentAdjacency = adjacency;
-        if (!currentGraph || !currentAdjacency) {
-          setIsLoadingGraph(true);
-          setLoadError(null);
-          try {
-            currentGraph = await loadGraphData();
-            currentAdjacency = buildAdjacencyList(currentGraph);
-            setGraph(currentGraph);
-            setAdjacency(currentAdjacency);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'graph.json の読み込みに失敗しました';
-            setLoadError(message);
-            setSearchError(message);
-            return;
-          } finally {
-            setIsLoadingGraph(false);
-          }
+        let loaded;
+        try {
+          loaded = await fetchGraph();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'graph.json の読み込みに失敗しました';
+          setSearchError(message);
+          return;
         }
+        const currentGraph = loaded.graph;
+        const currentAdjacency = loaded.adjacency;
+
         if (!currentGraph || !currentAdjacency) {
           setSearchError('駅データの読み込み完了後にもう一度検索してください');
           return;
@@ -117,14 +136,11 @@ export function App() {
         setResults(result.results);
         setDisconnectedMemberIndexes(result.disconnectedMemberIndexes);
         lastSearchRef.current = { key: validStationIndexes.join(','), memberStationIndexes: validStationIndexes };
-        if (!keepValidatedMembers) {
-          setMembers(validatedMembers);
-        }
       } finally {
         setIsSearching(false);
       }
     },
-    [adjacency, fetchGraph, graph, members, mode],
+    [fetchGraph, members, mode],
   );
 
   const handleModeChange = useCallback(
@@ -145,7 +161,7 @@ export function App() {
     [adjacency, graph],
   );
 
-  const disconnectedNames = useMemo(() => {
+  const disconnectedWarnings = useMemo(() => {
     if (!graph) {
       return [];
     }
@@ -155,7 +171,10 @@ export function App() {
     return disconnectedMemberIndexes
       .map((memberIndex) => selected[memberIndex])
       .filter((stationIndex): stationIndex is number => stationIndex !== undefined)
-      .map((stationIndex) => graph.stations[stationIndex].n);
+      .map((stationIndex, index) => ({
+        memberIndex: disconnectedMemberIndexes[index],
+        stationName: graph.stations[stationIndex].n,
+      }));
   }, [disconnectedMemberIndexes, graph, members]);
 
   return (
@@ -168,7 +187,7 @@ export function App() {
       {loadError ? (
         <section className="banner error" role="alert">
           <span>{loadError}</span>
-          <button type="button" onClick={fetchGraph}>
+          <button type="button" onClick={retryFetchGraph}>
             再試行
           </button>
         </section>
@@ -197,9 +216,9 @@ export function App() {
         </p>
       ) : null}
 
-      {disconnectedNames.map((name) => (
-        <p className="banner warning" role="alert" key={name}>
-          ⚠ {name} は他のメンバーと鉄道がつながっていないため候補を計算できません
+      {disconnectedWarnings.map((warning) => (
+        <p className="banner warning" role="alert" key={warning.memberIndex}>
+          ⚠ {warning.stationName} は他のメンバーと鉄道がつながっていないため候補を計算できません
         </p>
       ))}
 

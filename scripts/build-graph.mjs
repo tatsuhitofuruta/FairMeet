@@ -83,12 +83,16 @@ function addEdge(edges, seen, stats, type, a, b, weight) {
   stats[type] += 1;
 }
 
+function sanitizeLineColor(color) {
+  return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
+
 export function buildGraph(rawStations, rawLines, lineDetails) {
   const activeRawLines = rawLines.filter((line) => !line.closed);
   const rawLineCodeToIndex = new Map(activeRawLines.map((line, index) => [Number(line.code), index]));
   const lines = activeRawLines.map((line) => ({
     n: String(line.name),
-    c: line.color ?? null,
+    c: sanitizeLineColor(line.color),
   }));
 
   const activeStations = rawStations.filter((station) => !station.closed);

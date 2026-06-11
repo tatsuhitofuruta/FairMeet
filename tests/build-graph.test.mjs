@@ -62,7 +62,7 @@ const rawStations = [
 const rawLines = [
   { code: 10, name: 'A線', closed: false, color: '#111111' },
   { code: 20, name: 'B線', closed: false, color: '#222222' },
-  { code: 30, name: 'C線', closed: false, color: null },
+  { code: 30, name: 'C線', closed: false, color: 'broken-color' },
   { code: 40, name: '廃線', closed: true, color: null },
 ];
 
@@ -79,6 +79,7 @@ describe('buildGraph', () => {
 
     expect(graph.stations).toHaveLength(4);
     expect(graph.lines).toHaveLength(3);
+    expect(graph.lines.map((line) => line.c)).toEqual(['#111111', '#222222', null]);
     expect(graph.nodeCount).toBe(9);
     expect(stats).toEqual({ rideEdges: 2, hubEdges: 5, walkingEdges: 1 });
     expect(graph.edges).toHaveLength(8);

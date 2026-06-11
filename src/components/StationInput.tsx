@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { searchStations } from '../lib/search';
 import type { GraphData } from '../lib/types';
 
@@ -23,7 +23,8 @@ export function StationInput({
 }: StationInputProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const suggestions = useMemo(() => (graph ? searchStations(graph, value) : []), [graph, value]);
+  const deferredValue = useDeferredValue(value);
+  const suggestions = useMemo(() => (graph ? searchStations(graph, deferredValue) : []), [deferredValue, graph]);
   const listId = `${label}-suggestions`;
 
   const selectSuggestion = (index: number) => {

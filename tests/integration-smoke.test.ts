@@ -53,4 +53,15 @@ describe('generated graph integration smoke', () => {
     expect(result.results).toHaveLength(0);
     expect(result.disconnectedMemberIndexes).toEqual([1]);
   });
+
+  it.skipIf(!existsSync(graphPath))('detects disconnected members for Tokyo and Naha Airport', () => {
+    const graph = JSON.parse(readFileSync(graphPath, 'utf8')) as GraphData;
+    const adjacency = buildAdjacencyList(graph);
+    const members = [stationIndexByName(graph, '東京'), stationIndexByName(graph, '那覇空港')];
+
+    const result = findMeetingStations(graph, adjacency, members, 'fair');
+
+    expect(result.results).toHaveLength(0);
+    expect(result.disconnectedMemberIndexes).toEqual([1]);
+  });
 });

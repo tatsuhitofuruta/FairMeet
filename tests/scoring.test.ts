@@ -7,7 +7,7 @@ function graphFixture(): GraphData {
     version: 1,
     generatedAt: '2026-06-11T00:00:00.000Z',
     source: 'test',
-    nodeCount: 5,
+    nodeCount: 6,
     lines: [{ n: 'テスト線', c: null }],
     edges: [],
     stations: [
@@ -16,6 +16,7 @@ function graphFixture(): GraphData {
       { c: 3, n: 'C', o: 'C', k: 'しー', p: 13, lat: 36.1, lng: 139.76, l: [0] },
       { c: 4, n: 'C別駅', o: 'C', k: 'しーべつ', p: 13, lat: 36.1005, lng: 139.7605, l: [0] },
       { c: 5, n: 'D', o: 'D', k: 'でぃー', p: 13, lat: 36.5, lng: 139.76, l: [0] },
+      { c: 6, n: 'C遠隔', o: 'C', k: 'しーえんかく', p: 1, lat: 43.1, lng: 141.3, l: [0] },
     ],
   };
 }
@@ -27,8 +28,8 @@ describe('scoreCandidates', () => {
       graph,
       [0, 2],
       [
-        Float64Array.from([0, 200, 300, 310, 700]),
-        Float64Array.from([300, 200, 0, 10, 700]),
+        Float64Array.from([0, 200, 300, 310, 700, 800]),
+        Float64Array.from([300, 200, 0, 10, 700, 800]),
       ],
       'fair',
     );
@@ -43,8 +44,8 @@ describe('scoreCandidates', () => {
       graph,
       [0, 2],
       [
-        Float64Array.from([0, 200, 300, 301, 600]),
-        Float64Array.from([300, 200, 0, 1, 600]),
+        Float64Array.from([0, 200, 300, 301, 600, 650]),
+        Float64Array.from([300, 200, 0, 1, 600, 650]),
       ],
       'total',
     );
@@ -53,14 +54,30 @@ describe('scoreCandidates', () => {
     expect(results.map((result) => result.station.n)).not.toContain('C別駅');
   });
 
+  it('does not deduplicate remote stations that share original_name', () => {
+    const graph = graphFixture();
+    const results = scoreCandidates(
+      graph,
+      [0, 2],
+      [
+        Float64Array.from([900, 800, 300, 301, 700, 320]),
+        Float64Array.from([900, 800, 0, 1, 700, 320]),
+      ],
+      'total',
+    );
+
+    expect(results.map((result) => result.station.n)).toContain('C');
+    expect(results.map((result) => result.station.n)).toContain('C遠隔');
+  });
+
   it('excludes candidates that any member cannot reach', () => {
     const graph = graphFixture();
     const results = scoreCandidates(
       graph,
       [0, 2],
       [
-        Float64Array.from([0, 200, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 600]),
-        Float64Array.from([Number.POSITIVE_INFINITY, 200, 0, 1, 600]),
+        Float64Array.from([0, 200, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 600, Number.POSITIVE_INFINITY]),
+        Float64Array.from([Number.POSITIVE_INFINITY, 200, 0, 1, 600, 700]),
       ],
       'balanced',
     );
@@ -70,12 +87,58 @@ describe('scoreCandidates', () => {
 });
 
 describe('detectDisconnectedMembers', () => {
-  it('reports members whose start stations are unreachable from member 1', () => {
+  it('reports the first member when the first member is the isolated minority', () => {
     const disconnected = detectDisconnectedMembers(
       [0, 1, 2],
-      Float64Array.from([0, Number.POSITIVE_INFINITY, 100]),
+      [
+        Float64Array.from([0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([Number.POSITIVE_INFINITY, 0, 100]),
+        Float64Array.from([Number.POSITIVE_INFINITY, 100, 0]),
+      ],
+    );
+
+    expect(disconnected).toEqual([0]);
+  });
+
+  it('reports an isolated middle member', () => {
+    const disconnected = detectDisconnectedMembers(
+      [0, 1, 2],
+      [
+        Float64Array.from([0, Number.POSITIVE_INFINITY, 100]),
+        Float64Array.from([Number.POSITIVE_INFINITY, 0, Number.POSITIVE_INFINITY]),
+        Float64Array.from([100, Number.POSITIVE_INFINITY, 0]),
+      ],
     );
 
     expect(disconnected).toEqual([1]);
+  });
+
+  it('reports a disconnected multi-member minority group', () => {
+    const disconnected = detectDisconnectedMembers(
+      [0, 1, 2, 3, 4],
+      [
+        Float64Array.from([0, 100, 100, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([100, 0, 100, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([100, 100, 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 0, 100]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 100, 0]),
+      ],
+    );
+
+    expect(disconnected).toEqual([3, 4]);
+  });
+
+  it('keeps the group containing member 1 when groups are tied', () => {
+    const disconnected = detectDisconnectedMembers(
+      [0, 1, 2, 3],
+      [
+        Float64Array.from([0, 100, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([100, 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 0, 100]),
+        Float64Array.from([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 100, 0]),
+      ],
+    );
+
+    expect(disconnected).toEqual([2, 3]);
   });
 });
