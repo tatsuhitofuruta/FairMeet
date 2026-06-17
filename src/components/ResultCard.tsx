@@ -1,15 +1,16 @@
 import { mapSearchCategories, stationCategoryMapUrl, stationMapUrl } from '../lib/maps';
 import { PREFECTURES } from '../lib/search';
-import type { MeetingCandidate } from '../lib/scoring';
-import type { GraphData } from '../lib/types';
+import { explainCandidateScore, type MeetingCandidate } from '../lib/scoring';
+import type { GraphData, SearchMode } from '../lib/types';
 
 interface ResultCardProps {
   graph: GraphData;
   result: MeetingCandidate;
   rank: number;
+  mode: SearchMode;
 }
 
-export function ResultCard({ graph, result, rank }: ResultCardProps) {
+export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
   const station = result.station;
   const lines = station.l.map((lineIndex) => graph.lines[lineIndex]).filter(Boolean);
   const visibleLines = lines.slice(0, 5);
@@ -67,9 +68,12 @@ export function ResultCard({ graph, result, rank }: ResultCardProps) {
       </div>
 
       <footer className="result-footer">
-        <span>
-          最大 {Math.round(result.max)}分 / 平均 {Math.round(result.mean)}分
-        </span>
+        <div className="result-summary">
+          <span>
+            最大 {Math.round(result.max)}分 / 平均 {Math.round(result.mean)}分 / 負担差 {Math.round(result.range)}分
+          </span>
+          <span className="score-explanation">{explainCandidateScore(result, mode)}</span>
+        </div>
         <div className="map-links" aria-label={`${station.n}駅周辺のGoogleマップ検索`}>
           <a href={mapUrl} target="_blank" rel="noopener noreferrer">
             地図

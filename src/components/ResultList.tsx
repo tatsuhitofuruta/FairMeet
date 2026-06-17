@@ -1,13 +1,14 @@
 import { ResultCard } from './ResultCard';
 import type { MeetingCandidate } from '../lib/scoring';
-import type { GraphData } from '../lib/types';
+import type { GraphData, SearchMode } from '../lib/types';
 
 interface ResultListProps {
   graph: GraphData | null;
   results: MeetingCandidate[];
+  mode: SearchMode;
 }
 
-export function ResultList({ graph, results }: ResultListProps) {
+export function ResultList({ graph, results, mode }: ResultListProps) {
   if (!graph || results.length === 0) {
     return null;
   }
@@ -15,7 +16,7 @@ export function ResultList({ graph, results }: ResultListProps) {
   return (
     <section className="results" aria-label="候補駅">
       {results.map((result, index) => (
-        <ResultCard graph={graph} result={result} rank={index + 1} key={result.stationIndex} />
+        <ResultCard graph={graph} result={result} rank={index + 1} mode={mode} key={result.stationIndex} />
       ))}
     </section>
   );

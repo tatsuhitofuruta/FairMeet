@@ -13,8 +13,10 @@ export interface MeetingCandidate {
   station: Station;
   areaTier: StationAreaTierInfo;
   times: MemberTravelTime[];
+  min: number;
   max: number;
   mean: number;
+  range: number;
   score: number;
 }
 
@@ -48,6 +50,23 @@ function calculateScore(times: number[], mode: SearchMode): number {
     return mean;
   }
   return max + 0.1 * mean;
+}
+
+export function explainCandidateScore(
+  candidate: Pick<MeetingCandidate, 'max' | 'mean' | 'range'>,
+  mode: SearchMode,
+): string {
+  const max = Math.round(candidate.max);
+  const mean = Math.round(candidate.mean);
+  const range = Math.round(candidate.range);
+
+  if (mode === 'balanced') {
+    return `バランス: 平均${mean}分と負担差${range}分の両方を見る評価です`;
+  }
+  if (mode === 'total') {
+    return `合計重視: 平均${mean}分を抑える評価です（負担差${range}分）`;
+  }
+  return `公平重視: 最長${max}分と負担差${range}分を抑える評価です`;
 }
 
 function sortByScoreThenStation(a: MeetingCandidate, b: MeetingCandidate): number {
@@ -108,7 +127,9 @@ export function scoreCandidates(
 
     const minutes = rawTimes.map((time) => time / 10);
     const max = Math.max(...minutes);
+    const min = Math.min(...minutes);
     const mean = minutes.reduce((sum, value) => sum + value, 0) / minutes.length;
+    const range = max - min;
 
     ranked.push({
       stationIndex,
@@ -119,8 +140,10 @@ export function scoreCandidates(
         minutes: time,
         roundedMinutes: Math.round(time),
       })),
+      min,
       max,
       mean,
+      range,
       score: calculateScore(minutes, mode),
     });
   }

@@ -247,7 +247,7 @@ export function App() {
         </p>
       ))}
 
-      <ResultList graph={graph} results={results} />
+      <ResultList graph={graph} results={results} mode={mode} />
 
       <footer className="app-footer">
         <p>所要時間はダイヤを考慮しない概算です（駅間距離からの推定）</p>

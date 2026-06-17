@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectDisconnectedMembers, scoreCandidates } from '../src/lib/scoring';
+import { detectDisconnectedMembers, explainCandidateScore, scoreCandidates } from '../src/lib/scoring';
 import type { GraphData } from '../src/lib/types';
 
 function graphFixture(): GraphData {
@@ -36,6 +36,26 @@ describe('scoreCandidates', () => {
 
     expect(results[0].station.n).toBe('B');
     expect(results[0].max).toBe(20);
+  });
+
+  it('includes the minimum travel time and travel time gap for result explanations', () => {
+    const graph = graphFixture();
+    const results = scoreCandidates(
+      graph,
+      [0, 2, 4],
+      [
+        Float64Array.from([500, 100, 500, 500, 500, 500]),
+        Float64Array.from([500, 200, 500, 500, 500, 500]),
+        Float64Array.from([500, 300, 500, 500, 500, 500]),
+      ],
+      'balanced',
+    );
+
+    expect(results[0].station.n).toBe('B');
+    expect(results[0].min).toBe(10);
+    expect(results[0].max).toBe(30);
+    expect(results[0].mean).toBe(20);
+    expect(results[0].range).toBe(20);
   });
 
   it('uses area tier as a tie-breaker for candidates inside the score window', () => {
@@ -116,6 +136,28 @@ describe('scoreCandidates', () => {
     );
 
     expect(results.map((result) => result.station.n)).toEqual(['B', 'D']);
+  });
+});
+
+describe('explainCandidateScore', () => {
+  const candidate = {
+    max: 31.4,
+    mean: 20.2,
+    range: 13.7,
+  };
+
+  it('explains the fair mode score with the maximum time and travel time gap', () => {
+    expect(explainCandidateScore(candidate, 'fair')).toBe('公平重視: 最長31分と負担差14分を抑える評価です');
+  });
+
+  it('explains the balanced mode score with the mean time and travel time gap', () => {
+    expect(explainCandidateScore(candidate, 'balanced')).toBe(
+      'バランス: 平均20分と負担差14分の両方を見る評価です',
+    );
+  });
+
+  it('explains the total mode score with the mean time and travel time gap', () => {
+    expect(explainCandidateScore(candidate, 'total')).toBe('合計重視: 平均20分を抑える評価です（負担差14分）');
   });
 });
 
