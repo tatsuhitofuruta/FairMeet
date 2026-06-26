@@ -8,11 +8,13 @@
 [ビルド時]
 station_database (json.zip) --> scripts/build-graph.mjs --> public/data/graph.json
 
-[実行時（すべてブラウザ内）]
+[実行時（候補算出はすべてブラウザ内）]
 graph.json --fetch--> グラフ構築 --> Dijkstra×人数 --> スコアリング --> 上位5駅表示
+候補カードの実ルート確認 --fetch--> Transit API --> 現在時刻の実ルート要約表示
 ```
 
-- Vite + React 18+ + TypeScript の SPA。サーバ・外部APIなし
+- Vite + React 18+ + TypeScript の SPA。候補算出はサーバなし・外部APIなし
+- Transit API は候補カードでユーザーが「実ルート確認」を押したときだけ呼び出す。自動順位付けには使わない
 - 状態管理は useState のみ。ルーター・状態管理ライブラリは導入しない
 - UIフレームワークは使わず、単一のCSSファイルで素のCSSを書く（モバイルファースト）
 - 計算はメインスレッドで同期実行（後述の規模なら数十msで完了するため Web Worker は使わない）
@@ -31,7 +33,10 @@ FairMeet/
 │   │   ├── graph.ts       # graph.jsonロードと隣接リスト構築
 │   │   ├── dijkstra.ts    # 最短路探索
 │   │   ├── scoring.ts     # 候補駅スコアリング
-│   │   └── search.ts      # 駅名オートコンプリート（正規化含む）
+│   │   ├── search.ts      # 駅名オートコンプリート（正規化含む）
+│   │   ├── maps.ts        # Google Maps URL生成
+│   │   ├── transitApi.ts  # Transit API URL生成・fetch・要約
+│   │   └── stationAreaTiers.ts # 駅栄え度tier
 │   ├── components/
 │   │   ├── StationInput.tsx   # オートコンプリート付き入力行
 │   │   ├── MemberList.tsx     # 入力行の追加・削除
@@ -200,6 +205,7 @@ d' = 1.2 × d                  # 迂回係数: 直線距離→実キロの補正
    - 駅名（大きく）・都道府県・乗入路線チップ（路線色を背景に、最大5路線+「他n路線」）
    - 手動tier登録済みの駅だけ、駅名の横に「栄え度 {tier}」を表示する
    - メンバーごとの行: 「{出発駅名}から ○分」+ 所要時間に比例した横棒（カード内最大値=100%）
+   - 「実ルート確認」ボタン。押下時に各メンバーの最寄駅座標から候補駅座標へ Transit API `/api/v1/plan` を呼び、実ルートの所要時間、乗換回数、発着時刻、路線名を表示する
    - フッタ行: 「最大 ○分 / 平均 ○分」、Googleマップリンク（地図・飲食店・カフェ・居酒屋）。リンクはAPIキー不要のMaps URL（`https://www.google.com/maps/search/?api=1&query=...`、`target="_blank" rel="noopener noreferrer"`）を使う
 6. 到達不能時: 「⚠ {駅名} は他のメンバーと鉄道がつながっていないため候補を計算できません」
 7. フッタ:
@@ -211,6 +217,8 @@ d' = 1.2 × d                  # 迂回係数: 直線距離→実キロの補正
 - graph.json は初回マウント時に fetch 開始（`import.meta.env.BASE_URL + 'data/graph.json'`）。ロード中に検索したら**進行中の fetch Promise を再利用して**完了を待って実行する（二重fetchの発火は禁止）。fetch失敗時はエラーバナーと再試行ボタン
 - 検索結果はモード変更時に再計算する（Dijkstra結果はメンバー構成が同じ間キャッシュし、スコアリングのみやり直す）
 - 入力変更後は結果を古い状態のまま残さない（結果クリア or 「条件が変わりました」表示のどちらかで良い）
+- Transit API の実ルート確認は候補カード単位の明示操作でのみ実行する。上位5候補×最大10人への自動一括リクエストは禁止
+- Transit API への指定は `from=geo:{lat},{lng}` / `to=geo:{lat},{lng}`、`allowModes=rail`、`avoidModes=bus,air,ferry`、`numItineraries=1` を基本とする。API失敗時は候補自体を消さず、当該メンバー行に取得失敗を表示する
 
 ## 7. テスト（Vitest）
 
@@ -221,6 +229,7 @@ d' = 1.2 × d                  # 迂回係数: 直線距離→実キロの補正
 | dijkstra | 手組みの小グラフで最短距離・未到達の検証 |
 | scoring | fairモードでmax最小が勝つこと / 近接・同名近接の重複排除 / 遠隔同名駅は排除しないこと / 未到達除外 / 分断メンバー検出（孤立メンバーが先頭・中間・複数人のケースで、孤立側だけが返ること） |
 | search | ひらがな・カタカナ・漢字の前方一致、完全一致優先、8件上限 |
+| transitApi | Transit API URL生成、サービス時刻表示、レスポンス要約 |
 | build-graph | エッジ生成ロジックを純関数に切り出し、フィクスチャ（数駅×2路線のミニデータ）で乗車・徒歩・ハブエッジの本数と重みを検証 |
 | 統合スモーク | `public/data/graph.json` が存在する場合のみ実行（無ければskip）: 渋谷・大宮・横浜入力で候補5件が返り、全候補の最大所要時間が120分未満であること。那覇空港・東京（およびその逆順）で、孤立している那覇空港側だけが分断として検出されること |
 
@@ -251,7 +260,8 @@ build-graph のロジックは `scripts/build-graph.mjs` 内で `buildGraph(stat
 
 - 路線の分岐（支線）は station_list の並び順から正確に復元できないため、距離上限ガードで誤接続を防ぐに留める
 - 現行 MVP では運行本数・終電・特急料金は考慮しない
-- 現行 MVP では実際のホーム移動、乗換待ち、直通運転、列車種別、乗換回数の少なさは考慮しない
+- 候補順位付けでは、実際のホーム移動、乗換待ち、直通運転、列車種別、乗換回数の少なさは考慮しない
+- Transit API の実ルート確認は現在時刻の確認用であり、FairMeet の上位5候補の順位は変えない
 - 徒歩連絡は直線距離ベースの推定であり、実際の連絡通路の有無は確認しない
 
 ## 11. v2設計メモ
@@ -261,6 +271,6 @@ build-graph のロジックは `scripts/build-graph.mjs` 内で `buildGraph(stat
 | 項目 | 設計上の論点 |
 |------|--------------|
 | 終電判定 | 解散予定日時を追加し、候補駅から各メンバーの最寄駅へ帰れるかを、移動時間スコアとは別の制約として扱う。詳細は [LAST_TRAIN_V2.md](LAST_TRAIN_V2.md) |
-| 実際の乗換評価 | ホーム移動、乗換待ち、直通運転、乗換回数などをどこまで扱うかを整理する。詳細は [TRANSFER_MODEL_V2.md](TRANSFER_MODEL_V2.md) |
+| 実際の乗換評価 | Transit API の実ルート確認を補助表示として導入済み。候補順位付けへ反映する場合は、ホーム移動、乗換待ち、直通運転、乗換回数などをどこまでスコアへ入れるかを別途整理する。詳細は [TRANSFER_MODEL_V2.md](TRANSFER_MODEL_V2.md) |
 | Google Maps API | MVPではAPIキー不要のMaps URLまでに留める。店舗検索や徒歩時間をアプリ内で扱う場合は、APIキー管理、料金、規約、キャッシュ制約を確認する。詳細は [GOOGLE_MAPS_V2.md](GOOGLE_MAPS_V2.md) |
 | 駅の栄え度tier | 駅コードをキーにした静的データから始める。スコアリングでは、移動時間の公平性を主軸にしつつ、同点または近い候補の並び替えに使う。詳細は [STATION_AREA_TIERS.md](STATION_AREA_TIERS.md) |

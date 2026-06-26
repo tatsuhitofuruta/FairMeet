@@ -1,6 +1,13 @@
+import { useState } from 'react';
 import { mapSearchCategories, stationCategoryMapUrl, stationMapUrl } from '../lib/maps';
 import { PREFECTURES } from '../lib/search';
 import { explainCandidateScore, type MeetingCandidate } from '../lib/scoring';
+import {
+  fetchTransitPlan,
+  stationTransitEndpoint,
+  summarizeTransitPlan,
+  type TransitRouteSummary,
+} from '../lib/transitApi';
 import type { GraphData, SearchMode } from '../lib/types';
 
 interface ResultCardProps {
@@ -10,7 +17,20 @@ interface ResultCardProps {
   mode: SearchMode;
 }
 
+interface ActualRouteResult {
+  stationIndex: number;
+  stationName: string;
+  summary?: TransitRouteSummary;
+  error?: string;
+}
+
+interface ActualRouteState {
+  status: 'idle' | 'loading' | 'ready';
+  routes: ActualRouteResult[];
+}
+
 export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
+  const [actualRouteState, setActualRouteState] = useState<ActualRouteState>({ status: 'idle', routes: [] });
   const station = result.station;
   const lines = station.l.map((lineIndex) => graph.lines[lineIndex]).filter(Boolean);
   const visibleLines = lines.slice(0, 5);
@@ -18,6 +38,66 @@ export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
   const maxTime = Math.max(1, ...result.times.map((time) => time.minutes));
   const prefectureName = PREFECTURES[station.p] ?? '';
   const mapUrl = stationMapUrl(station);
+
+  const checkActualRoutes = async () => {
+    setActualRouteState({ status: 'loading', routes: [] });
+
+    const routes: ActualRouteResult[] = [];
+
+    for (const time of result.times) {
+      const startStation = graph.stations[time.stationIndex];
+      let route: ActualRouteResult;
+
+      if (time.stationIndex === result.stationIndex) {
+        route = {
+          stationIndex: time.stationIndex,
+          stationName: startStation.n,
+          summary: {
+            durationMinutes: 0,
+            transferCount: 0,
+            departureLabel: '--:--',
+            arrivalLabel: '--:--',
+            routeNames: ['同じ駅'],
+          },
+        };
+      } else {
+        try {
+          const plan = await fetchTransitPlan({
+            from: stationTransitEndpoint(startStation),
+            to: stationTransitEndpoint(station),
+            fromLabel: startStation.n,
+            toLabel: station.n,
+            type: 'departure',
+            allowModes: 'rail',
+            avoidModes: 'bus,air,ferry',
+            maxTransfers: 6,
+            numItineraries: 1,
+          });
+          const summary = summarizeTransitPlan(plan);
+          if (!summary) {
+            throw new Error('Transit API returned no journeys');
+          }
+
+          route = {
+            stationIndex: time.stationIndex,
+            stationName: startStation.n,
+            summary,
+          };
+        } catch {
+          route = {
+            stationIndex: time.stationIndex,
+            stationName: startStation.n,
+            error: 'Transit APIで実ルートを取得できませんでした',
+          };
+        }
+      }
+
+      routes.push(route);
+      setActualRouteState({ status: 'loading', routes: [...routes] });
+    }
+
+    setActualRouteState({ status: 'ready', routes });
+  };
 
   return (
     <article className="result-card">
@@ -66,6 +146,34 @@ export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
           );
         })}
       </div>
+
+      <div className="actual-route-check">
+        <button type="button" onClick={() => void checkActualRoutes()} disabled={actualRouteState.status === 'loading'}>
+          {actualRouteState.status === 'loading' ? '実ルート確認中...' : '実ルート確認'}
+        </button>
+      </div>
+
+      {actualRouteState.status !== 'idle' ? (
+        <div className="actual-routes" aria-live="polite">
+          {actualRouteState.status === 'loading' ? <p>Transit APIで確認しています</p> : null}
+          {actualRouteState.routes.length > 0
+            ? actualRouteState.routes.map((route) => (
+                <div className="actual-route-row" key={route.stationIndex}>
+                  <span className="actual-route-origin">{route.stationName}から</span>
+                  {route.summary ? (
+                    <span className="actual-route-detail">
+                      {route.summary.durationMinutes}分 / 乗換{route.summary.transferCount}回 /{' '}
+                      {route.summary.departureLabel}発 → {route.summary.arrivalLabel}着
+                      <span className="actual-route-lines">{route.summary.routeNames.join('、')}</span>
+                    </span>
+                  ) : (
+                    <span className="actual-route-error">{route.error}</span>
+                  )}
+                </div>
+              ))
+            : null}
+        </div>
+      ) : null}
 
       <footer className="result-footer">
         <div className="result-summary">
