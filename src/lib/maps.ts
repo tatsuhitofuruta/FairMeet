@@ -13,6 +13,6 @@ export function stationMapUrl(station: Station): string {
   return googleMapsSearchUrl(`${station.lat},${station.lng}`);
 }
 
-export function stationCategoryMapUrl(station: Station, category: MapSearchCategory): string {
-  return googleMapsSearchUrl(`${category} near ${station.lat},${station.lng}`);
+export function stationCategoryMapUrl(station: Station, prefectureName: string, category: MapSearchCategory): string {
+  return googleMapsSearchUrl(`${category} near ${station.o || station.n}駅 ${prefectureName}`);
 }

@@ -188,7 +188,7 @@ export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
           </a>
           {mapSearchCategories.map((category) => (
             <a
-              href={stationCategoryMapUrl(station, category)}
+              href={stationCategoryMapUrl(station, prefectureName, category)}
               target="_blank"
               rel="noopener noreferrer"
               key={category}
