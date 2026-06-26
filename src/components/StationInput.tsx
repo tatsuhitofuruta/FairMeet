@@ -26,7 +26,7 @@ export function StationInput({
   const deferredValue = useDeferredValue(value);
   const suggestions = useMemo(() => (graph ? searchStations(graph, deferredValue) : []), [deferredValue, graph]);
   const listId = `${label}-suggestions`;
-  const hasVisibleSuggestions = isOpen && suggestions.length > 0;
+  const hasVisibleSuggestions = stationIndex === null && isOpen && suggestions.length > 0;
   const activeDescendantId = hasVisibleSuggestions ? `${listId}-opt-${activeIndex}` : undefined;
 
   const selectSuggestion = (index: number) => {
