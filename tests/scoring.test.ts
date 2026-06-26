@@ -72,6 +72,7 @@ describe('scoreCandidates', () => {
 
     expect(results[0].station.n).toBe('B');
     expect(results[0].areaTier.tier).toBe(4);
+    expect(results[0].areaTier.grade).toBe('S');
     expect(results[0].score).toBe(12);
   });
 

@@ -1,6 +1,6 @@
 import type { Station, StationAreaTier, StationAreaTierDefinition, StationAreaTierInfo } from './types';
 
-export const STATION_AREA_TIER_VERSION = '2026-06-11-manual-v1';
+export const STATION_AREA_TIER_VERSION = '2026-06-26-grade-v2';
 export const STATION_AREA_TIER_SCORE_WINDOW_MINUTES = 3;
 
 export const STATION_AREA_TIER_PRIMARY_SOURCE = {
@@ -12,26 +12,31 @@ export const STATION_AREA_TIER_PRIMARY_SOURCE = {
 export const STATION_AREA_TIER_DEFINITIONS: Record<StationAreaTier, StationAreaTierDefinition> = {
   0: {
     tier: 0,
-    label: '未設定',
-    summary: '手動tier表に未登録。公平スコアの補正には使わない',
+    grade: 'D',
+    label: '控えめ',
+    summary: '広域の集合候補としては控えめ。未登録駅の内部初期値にも使う',
   },
   1: {
     tier: 1,
+    grade: 'C',
     label: '生活圏',
     summary: '日常利用の飲食店や店舗はあるが、広域の待ち合わせ候補としては控えめ',
   },
   2: {
     tier: 2,
+    grade: 'B',
     label: '地域拠点',
     summary: '複数路線または駅前商業があり、近隣からの集合には使いやすい',
   },
   3: {
     tier: 3,
+    grade: 'A',
     label: '広域拠点',
     summary: '商業・飲食・乗換利便性が高く、広域の集合候補になりやすい',
   },
   4: {
     tier: 4,
+    grade: 'S',
     label: '主要繁華街',
     summary: '大規模ターミナルまたは代表的な繁華街で、店探しと待ち合わせの選択肢が厚い',
   },

@@ -257,6 +257,12 @@ export function App() {
             station_database (CC BY-SA 4.0)
           </a>
         </p>
+        <p>
+          実ルート確認:{' '}
+          <a href="https://api.transit.ls8h.com/" target="_blank" rel="noreferrer">
+            Transit API
+          </a>
+        </p>
       </footer>
     </main>
   );
