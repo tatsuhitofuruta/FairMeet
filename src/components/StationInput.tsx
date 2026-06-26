@@ -55,6 +55,7 @@ export function StationInput({
           aria-controls={listId}
           aria-activedescendant={activeDescendantId}
           onFocus={() => setIsOpen(true)}
+          onBlur={() => setIsOpen(false)}
           onChange={(event) => {
             onChange(event.target.value);
             setIsOpen(true);
