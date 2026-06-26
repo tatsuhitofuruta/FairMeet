@@ -24,7 +24,7 @@ npm run dev          # 開発サーバ起動
 
 - 駅を「ハブ + (駅,路線)スポーク」に分割したグラフを構築。乗車エッジは駅間距離と表定速度モデルから、乗換はハブ⇔スポーク2.5分、近接駅間は徒歩連絡エッジで表現
 - メンバーごとにDijkstraで全駅への所要時間を計算し、モード別スコア（公平重視 = 最大所要時間の最小化など）で順位付け
-- スコア差が近い候補だけ、station code keyed の駅栄え度tierを補助的なタイブレークに使う
+- スコア差が近い候補だけ、station code keyed の駅栄え度グレード（S/A/B/C/D）を補助的なタイブレークに使う
 - GoogleマップはAPIキー不要のMaps URLを使い、候補駅周辺の地図・飲食店・カフェ・居酒屋検索を別タブで開く
 - 候補カードの「実ルート確認」から、認証不要の [Transit API](https://api.transit.ls8h.com/) で現在時刻の実乗換ルートを確認できる
 - 所要時間はダイヤを考慮しない概算。詳細は [docs/DESIGN.md](docs/DESIGN.md) と [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
@@ -44,7 +44,7 @@ npm run dev          # 開発サーバ起動
 - [終電判定](docs/LAST_TRAIN_V2.md): 解散予定日時を入れ、各メンバーが帰宅可能かを判定する
 - [実際の乗換評価](docs/TRANSFER_MODEL_V2.md): ホーム移動、乗換待ち、直通運転、乗換回数をどこまで扱うかを整理する
 - [Google Maps API連携](docs/GOOGLE_MAPS_V2.md): 店舗検索やアプリ内地図が必要になった場合のAPI導入方針を整理する
-- [駅の栄え度tier](docs/STATION_AREA_TIERS.md): 駅ごとの集合場所としての使いやすさを補助指標として扱う
+- [駅の栄え度グレード](docs/STATION_AREA_TIERS.md): 駅ごとの集合場所としての使いやすさを補助指標として扱う
 
 ## データ出典とライセンス
 

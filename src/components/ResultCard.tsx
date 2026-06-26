@@ -106,9 +106,9 @@ export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
         <div>
           <div className="station-title-row">
             <h2>{station.n}</h2>
-            {result.areaTier.tier > 0 ? (
+            {result.areaTier.source !== 'unlisted-default' ? (
               <span className="area-tier-badge" title={result.areaTier.summary}>
-                栄え度 {result.areaTier.tier}
+                栄え度 {result.areaTier.grade}
               </span>
             ) : null}
           </div>
@@ -188,7 +188,7 @@ export function ResultCard({ graph, result, rank, mode }: ResultCardProps) {
           </a>
           {mapSearchCategories.map((category) => (
             <a
-              href={stationCategoryMapUrl(station, prefectureName, category)}
+              href={stationCategoryMapUrl(station, category)}
               target="_blank"
               rel="noopener noreferrer"
               key={category}

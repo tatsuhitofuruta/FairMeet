@@ -36,9 +36,11 @@ export type AdjacencyList = AdjacentEdge[][];
 export type SearchMode = 'fair' | 'balanced' | 'total';
 
 export type StationAreaTier = 0 | 1 | 2 | 3 | 4;
+export type StationAreaTierGrade = 'D' | 'C' | 'B' | 'A' | 'S';
 
 export interface StationAreaTierDefinition {
   tier: StationAreaTier;
+  grade: StationAreaTierGrade;
   label: string;
   summary: string;
 }
