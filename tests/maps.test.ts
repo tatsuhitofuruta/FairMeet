@@ -23,10 +23,10 @@ describe('stationMapUrl', () => {
 
 describe('stationCategoryMapUrl', () => {
   it('builds category search URLs without API keys', () => {
-    const url = stationCategoryMapUrl(station, '飲食店');
+    const url = stationCategoryMapUrl(station, '東京都', '飲食店');
 
     expect(url).toBe(
-      'https://www.google.com/maps/search/?api=1&query=%E9%A3%B2%E9%A3%9F%E5%BA%97+near+35.681236%2C139.767125',
+      'https://www.google.com/maps/search/?api=1&query=%E9%A3%B2%E9%A3%9F%E5%BA%97+near+%E6%9D%B1%E4%BA%AC%E9%A7%85+%E6%9D%B1%E4%BA%AC%E9%83%BD',
     );
     expect(url).not.toContain('key=');
   });
